@@ -41,3 +41,11 @@ coverage/
 
 # temporary files
 *.tmp
+
+# firebase
+.firebase*
+firebase.*
+
+# firebase agents
+.agents
+skills-lock.json
