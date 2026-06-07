@@ -1,0 +1,39 @@
+:root {
+  --mh-bg: #FAFAFA;
+  --mh-surface: #FFFFFF;
+  --mh-border: #E5E5E5;
+  --mh-text: #0A0A0A;
+  --mh-muted: #6B6B6B;
+  --mh-accent: #1A1A1A;
+  --mh-accent-fg: #FFFFFF;
+  --mh-green: #16A34A;
+  --mh-amber: #D97706;
+  --mh-red: #DC2626;
+  --mh-font-display: 'DM Sans', 'Inter', sans-serif;
+  --mh-font-body: 'Inter', sans-serif;
+  --mh-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.dark {
+  --mh-bg: #0F0F0F;
+  --mh-surface: #1A1A1A;
+  --mh-border: #2A2A2A;
+  --mh-text: #F5F5F5;
+  --mh-muted: #999999;
+  --mh-accent: #F5F5F5;
+  --mh-accent-fg: #0A0A0A;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--mh-font-body);
+  background-color: var(--mh-bg);
+  color: var(--mh-text);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--mh-font-display);
+}
