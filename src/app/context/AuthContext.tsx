@@ -30,18 +30,7 @@ interface AuthContextValue {
     email: string,
   ) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (
-    currentPassword: string,
-    newPassword: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  updateUserName: (
-    fullName: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  updateUserEmail: (
-    newEmail: string,
-    currentPassword: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  updateUserMetadata: (
-    metadata: Record<string, unknown>,
+    password: string,
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
@@ -54,9 +43,6 @@ const AuthContext = createContext<AuthContextValue>({
   signUp: async () => ({ success: false }),
   sendPasswordReset: async () => ({ success: false }),
   updatePassword: async () => ({ success: false }),
-  updateUserName: async () => ({ success: false }),
-  updateUserEmail: async () => ({ success: false }),
-  updateUserMetadata: async () => ({ success: false }),
   logout: async () => {},
 });
 
@@ -161,77 +147,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
-  const updatePassword = async (currentPassword: string, newPassword: string) => {
-    // Reauthenticate user with current password first
-    const user = session?.user;
-    if (!user?.email) {
-      return { success: false, error: "User not authenticated" };
-    }
-
-    // Verify current password by attempting to sign in
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    });
-
-    if (signInError) {
-      return { success: false, error: "Current password is incorrect" };
-    }
-
-    // Now update to new password
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return { success: true };
-  };
-
-  const updateUserName = async (fullName: string) => {
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        full_name: fullName.trim(),
-      },
-    });
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return { success: true };
-  };
-
-  const updateUserEmail = async (newEmail: string, currentPassword: string) => {
-    // Verify current password first
-    const user = session?.user;
-    if (!user?.email) {
-      return { success: false, error: "User not authenticated" };
-    }
-
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    });
-
-    if (signInError) {
-      return { success: false, error: "Current password is incorrect" };
-    }
-
-    // Update email
-    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return { success: true };
-  };
-
-  const updateUserMetadata = async (metadata: Record<string, unknown>) => {
-    const { error } = await supabase.auth.updateUser({
-      data: metadata,
-    });
+  const updatePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
       return { success: false, error: error.message };
@@ -253,9 +170,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       sendPasswordReset,
       updatePassword,
-      updateUserName,
-      updateUserEmail,
-      updateUserMetadata,
       logout,
     }),
     [session, loading],
