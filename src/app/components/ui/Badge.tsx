@@ -12,7 +12,7 @@ const config: Record<BadgeStatus, { label: string; bg: string; color: string; do
 }
 
 export function Badge({ status }: { status: BadgeStatus }) {
-  const c = config[status]
+  const c = config[status?.toLowerCase() as BadgeStatus] ?? config.pending
   return (
     <span
       style={{
