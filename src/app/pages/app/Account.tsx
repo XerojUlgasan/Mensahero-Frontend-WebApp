@@ -1,38 +1,88 @@
 import React, { useState } from "react";
-import { X } from "lucide-react";
-import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-
-const timezones = [
-  { value: "Asia/Manila", label: "Asia/Manila (UTC+8)" },
-  { value: "America/New_York", label: "America/New_York (UTC-5)" },
-  { value: "America/Los_Angeles", label: "America/Los_Angeles (UTC-8)" },
-  { value: "Europe/London", label: "Europe/London (UTC+0)" },
-  { value: "Europe/Berlin", label: "Europe/Berlin (UTC+1)" },
-  { value: "Asia/Tokyo", label: "Asia/Tokyo (UTC+9)" },
-  { value: "Asia/Singapore", label: "Asia/Singapore (UTC+8)" },
-  { value: "UTC", label: "UTC (UTC+0)" },
-];
+import { supabase } from "../../lib/supabase";
 
 export function Account() {
-  const { theme, toggle } = useTheme();
   const { session } = useAuth();
-  const [name, setName] = useState(
-    session?.user.user_metadata?.full_name ?? "",
-  );
-  const [timezone, setTimezone] = useState("Asia/Manila");
-  const [bannerVisible, setBannerVisible] = useState(true);
-  const [profileSaved, setProfileSaved] = useState(false);
-  const [prefsSaved, setPrefsSaved] = useState(false);
 
-  const handleSaveProfile = () => {
-    setProfileSaved(true);
-    setTimeout(() => setProfileSaved(false), 2000);
+  // Profile / name
+  const [name, setName] = useState(session?.user.user_metadata?.full_name ?? "");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameMsg, setNameMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Change email
+  const [newEmail, setNewEmail] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Change password
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const initials =
+    session?.user.user_metadata?.full_name
+      ?.split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p: string) => p[0]?.toUpperCase())
+      .join("") ||
+    session?.user.email?.slice(0, 2).toUpperCase() ||
+    "MH";
+
+  const handleSaveName = async () => {
+    if (!name.trim()) return;
+    setNameSaving(true);
+    setNameMsg(null);
+    const { error } = await supabase.auth.updateUser({ data: { full_name: name.trim() } });
+    setNameSaving(false);
+    setNameMsg(error ? { ok: false, text: error.message } : { ok: true, text: "Name updated." });
   };
 
-  const handleSavePrefs = () => {
-    setPrefsSaved(true);
-    setTimeout(() => setPrefsSaved(false), 2000);
+  const handleChangeEmail = async () => {
+    if (!newEmail.trim()) return;
+    setEmailSaving(true);
+    setEmailMsg(null);
+    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
+    setEmailSaving(false);
+    if (error) {
+      setEmailMsg({ ok: false, text: error.message });
+    } else {
+      setEmailMsg({ ok: true, text: "Confirmation sent to your new email." });
+      setNewEmail("");
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPw || !newPw || !confirmPw) return;
+    if (newPw !== confirmPw) {
+      setPwMsg({ ok: false, text: "New passwords do not match." });
+      return;
+    }
+    setPwSaving(true);
+    setPwMsg(null);
+    // Re-authenticate with current password first
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: session?.user.email ?? "",
+      password: currentPw,
+    });
+    if (signInError) {
+      setPwSaving(false);
+      setPwMsg({ ok: false, text: "Current password is incorrect." });
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPw });
+    setPwSaving(false);
+    if (error) {
+      setPwMsg({ ok: false, text: error.message });
+    } else {
+      setPwMsg({ ok: true, text: "Password updated successfully." });
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -45,6 +95,7 @@ export function Account() {
     color: "var(--mh-text)",
     fontFamily: "var(--mh-font-body)",
     outline: "none",
+    boxSizing: "border-box",
   };
 
   const sectionStyle: React.CSSProperties = {
@@ -56,308 +107,124 @@ export function Account() {
     boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
   };
 
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    color: "var(--mh-text)",
+    fontSize: 13,
+    fontWeight: 500,
+    marginBottom: 6,
+  };
+
+  const saveBtn = (loading: boolean, disabled: boolean): React.CSSProperties => ({
+    background: "var(--mh-accent)",
+    color: "var(--mh-accent-fg)",
+    border: "none",
+    borderRadius: 6,
+    padding: "9px 18px",
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: loading || disabled ? "not-allowed" : "pointer",
+    opacity: loading || disabled ? 0.6 : 1,
+    fontFamily: "var(--mh-font-body)",
+  });
+
+  const msg = (m: { ok: boolean; text: string }) => (
+    <span style={{ fontSize: 13, color: m.ok ? "var(--mh-green)" : "var(--mh-red)" }}>
+      {m.ok ? "✓ " : "✗ "}{m.text}
+    </span>
+  );
+
   return (
     <div style={{ padding: 32, maxWidth: 600 }}>
-      {bannerVisible && (
-        <div
-          style={{
-            background: "var(--mh-surface)",
-            border: "1px solid var(--mh-border)",
-            borderRadius: 8,
-            padding: "12px 16px",
-            marginBottom: 20,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <p style={{ color: "var(--mh-muted)", fontSize: 13 }}>
-            Your profile is connected to your Supabase account.
-          </p>
-          <button
-            onClick={() => setBannerVisible(false)}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--mh-muted)",
-              padding: 4,
-              display: "flex",
-              alignItems: "center",
-              flexShrink: 0,
-            }}
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
 
+      {/* Profile */}
       <section style={sectionStyle}>
-        <h3
-          style={{
-            color: "var(--mh-text)",
-            fontWeight: 600,
-            fontSize: 15,
-            fontFamily: "var(--mh-font-display)",
-            marginBottom: 24,
-          }}
-        >
+        <h3 style={{ color: "var(--mh-text)", fontWeight: 600, fontSize: 15, fontFamily: "var(--mh-font-display)", marginBottom: 24 }}>
           Profile
         </h3>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            marginBottom: 24,
-          }}
-        >
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: "50%",
-              background: "var(--mh-accent)",
-              color: "var(--mh-accent-fg)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-              fontWeight: 700,
-              letterSpacing: "0.05em",
-              flexShrink: 0,
-            }}
-          >
-            {session?.user.user_metadata?.full_name
-              ?.split(" ")
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((part) => part[0]?.toUpperCase())
-              .join("") ||
-              session?.user.email?.slice(0, 2).toUpperCase() ||
-              "MH"}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--mh-accent)", color: "var(--mh-accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
+            {initials}
           </div>
           <div>
-            <p
-              style={{ color: "var(--mh-text)", fontWeight: 500, fontSize: 15 }}
-            >
-              {name}
-            </p>
-            <p style={{ color: "var(--mh-muted)", fontSize: 13 }}>
-              {session?.user.email}
-            </p>
+            <p style={{ color: "var(--mh-text)", fontWeight: 500, fontSize: 15 }}>{name || "—"}</p>
+            <p style={{ color: "var(--mh-muted)", fontSize: 13 }}>{session?.user.email}</p>
           </div>
         </div>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <label
-              style={{
-                display: "block",
-                color: "var(--mh-text)",
-                fontSize: 13,
-                fontWeight: 500,
-                marginBottom: 6,
-              }}
-            >
-              Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={inputStyle}
-            />
+            <label style={labelStyle}>Display Name</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
           </div>
           <div>
-            <label
-              style={{
-                display: "block",
-                color: "var(--mh-text)",
-                fontSize: 13,
-                fontWeight: 500,
-                marginBottom: 6,
-              }}
-            >
-              Email{" "}
-              <span style={{ color: "var(--mh-muted)", fontWeight: 400 }}>
-                (read-only)
-              </span>
+            <label style={{ ...labelStyle }}>
+              Email <span style={{ color: "var(--mh-muted)", fontWeight: 400 }}>(read-only — change below)</span>
             </label>
-            <input
-              type="email"
-              value={session?.user.email ?? ""}
-              readOnly
-              style={{ ...inputStyle, opacity: 0.6, cursor: "not-allowed" }}
-            />
+            <input type="email" value={session?.user.email ?? ""} readOnly style={{ ...inputStyle, opacity: 0.6, cursor: "not-allowed" }} />
           </div>
         </div>
-
-        <div
-          style={{
-            marginTop: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <button
-            onClick={handleSaveProfile}
-            style={{
-              background: "var(--mh-accent)",
-              color: "var(--mh-accent-fg)",
-              border: "none",
-              borderRadius: 6,
-              padding: "9px 18px",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "var(--mh-font-body)",
-            }}
-          >
-            Save Changes
+        <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => void handleSaveName()} disabled={nameSaving || !name.trim()} style={saveBtn(nameSaving, !name.trim())}>
+            {nameSaving ? "Saving…" : "Save Name"}
           </button>
-          {profileSaved && (
-            <span style={{ color: "var(--mh-green)", fontSize: 13 }}>
-              ✓ Saved
-            </span>
-          )}
+          {nameMsg && msg(nameMsg)}
         </div>
       </section>
 
+      {/* Change Email */}
       <section style={sectionStyle}>
-        <h3
-          style={{
-            color: "var(--mh-text)",
-            fontWeight: 600,
-            fontSize: 15,
-            fontFamily: "var(--mh-font-display)",
-            marginBottom: 24,
-          }}
-        >
-          Preferences
+        <h3 style={{ color: "var(--mh-text)", fontWeight: 600, fontSize: 15, fontFamily: "var(--mh-font-display)", marginBottom: 24 }}>
+          Change Email
         </h3>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <p
-                style={{
-                  color: "var(--mh-text)",
-                  fontSize: 14,
-                  fontWeight: 500,
-                }}
-              >
-                Dark mode
-              </p>
-              <p
-                style={{ color: "var(--mh-muted)", fontSize: 12, marginTop: 2 }}
-              >
-                Currently {theme === "dark" ? "dark" : "light"}
-              </p>
-            </div>
-            <button
-              onClick={toggle}
-              role="switch"
-              aria-checked={theme === "dark"}
-              style={{
-                width: 44,
-                height: 24,
-                borderRadius: 12,
-                background:
-                  theme === "dark" ? "var(--mh-accent)" : "var(--mh-border)",
-                border: "none",
-                cursor: "pointer",
-                position: "relative",
-                transition: "background 0.2s",
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  top: 3,
-                  left: theme === "dark" ? 23 : 3,
-                  width: 18,
-                  height: 18,
-                  borderRadius: "50%",
-                  background:
-                    theme === "dark" ? "var(--mh-accent-fg)" : "#FFFFFF",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                  transition: "left 0.2s",
-                }}
-              />
-            </button>
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                color: "var(--mh-text)",
-                fontSize: 13,
-                fontWeight: 500,
-                marginBottom: 6,
-              }}
-            >
-              Timezone
-            </label>
-            <select
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              style={{
-                ...inputStyle,
-                cursor: "pointer",
-              }}
-            >
-              {timezones.map((tz) => (
-                <option key={tz.value} value={tz.value}>
-                  {tz.label}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label style={labelStyle}>New Email Address</label>
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="Enter new email"
+            style={inputStyle}
+          />
         </div>
-
-        <div
-          style={{
-            marginTop: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <button
-            onClick={handleSavePrefs}
-            style={{
-              background: "var(--mh-accent)",
-              color: "var(--mh-accent-fg)",
-              border: "none",
-              borderRadius: 6,
-              padding: "9px 18px",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "var(--mh-font-body)",
-            }}
-          >
-            Save Preferences
+        <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => void handleChangeEmail()} disabled={emailSaving || !newEmail.trim()} style={saveBtn(emailSaving, !newEmail.trim())}>
+            {emailSaving ? "Sending…" : "Update Email"}
           </button>
-          {prefsSaved && (
-            <span style={{ color: "var(--mh-green)", fontSize: 13 }}>
-              ✓ Saved
-            </span>
-          )}
+          {emailMsg && msg(emailMsg)}
         </div>
       </section>
+
+      {/* Change Password */}
+      <section style={sectionStyle}>
+        <h3 style={{ color: "var(--mh-text)", fontWeight: 600, fontSize: 15, fontFamily: "var(--mh-font-display)", marginBottom: 24 }}>
+          Change Password
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Current Password</label>
+            <input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} placeholder="••••••••" style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>New Password</label>
+            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="••••••••" style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Confirm New Password</label>
+            <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="••••••••" style={inputStyle} />
+          </div>
+        </div>
+        <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            onClick={() => void handleChangePassword()}
+            disabled={pwSaving || !currentPw || !newPw || !confirmPw}
+            style={saveBtn(pwSaving, !currentPw || !newPw || !confirmPw)}
+          >
+            {pwSaving ? "Updating…" : "Update Password"}
+          </button>
+          {pwMsg && msg(pwMsg)}
+        </div>
+      </section>
+
     </div>
   );
 }

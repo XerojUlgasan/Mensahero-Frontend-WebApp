@@ -49,3 +49,5 @@ firebase.*
 # firebase agents
 .agents
 skills-lock.json
+
+contexts/

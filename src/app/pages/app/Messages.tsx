@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Search, Send } from "lucide-react";
+import { RefreshCw, Search, Send, Plus, X } from "lucide-react";
 import { Badge } from "../../components/ui/Badge";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -62,6 +62,13 @@ export function Messages() {
   const [fromInput, setFromInput] = useState("");
   const [msgInput, setMsgInput] = useState("");
   const [sending, setSending] = useState(false);
+
+  // Create thread modal
+  const [showCreateThread, setShowCreateThread] = useState(false);
+  const [ctFrom, setCtFrom] = useState("");
+  const [ctTo, setCtTo] = useState("");
+  const [ctMessage, setCtMessage] = useState("");
+  const [ctCreating, setCtCreating] = useState(false);
 
   // ── Panel 1: load API keys ────────────────────────────────────────────────
   const loadApiKeys = useCallback(
@@ -244,6 +251,47 @@ export function Messages() {
     }
   };
 
+  // ── Create thread ─────────────────────────────────────────────────────────
+  const handleCreateThread = async () => {
+    if (!session || !selectedKey || !ctFrom.trim() || !ctTo.trim() || !ctMessage.trim()) return;
+    setCtCreating(true);
+    try {
+      const { getApiBaseUrl } = await import("../../lib/api");
+      const res = await fetch(`${getApiBaseUrl()}/api/messages/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          apiKey: selectedKey.key,
+          from: ctFrom.trim(),
+          to: ctTo.trim(),
+          message: ctMessage.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const newMsg = (await res.json()) as ApiMessage;
+      // refresh recipients and auto-select the new thread
+      const cacheKey = createCacheKey("recipients", session, selectedKey.id);
+      const cached = readCachedJson<ApiMessage[]>(cacheKey);
+      const updatedRecipients = cached
+        ? [newMsg, ...cached.filter((r) => r.receiver !== newMsg.receiver)]
+        : [newMsg];
+      writeCachedJson(cacheKey, updatedRecipients);
+      setRecipients(updatedRecipients);
+      setShowCreateThread(false);
+      setCtFrom("");
+      setCtTo("");
+      setCtMessage("");
+      handleRecipientSelect(newMsg.receiver);
+    } catch (e) {
+      console.error("Failed to create thread:", e);
+    } finally {
+      setCtCreating(false);
+    }
+  };
+
   // ── Send message ──────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!session || !selectedKey || !selectedRecipient || !fromInput.trim() || !msgInput.trim()) return;
@@ -345,6 +393,62 @@ export function Messages() {
   return (
     <div style={{ height: "calc(100vh - 56px)", display: "flex", overflow: "hidden", background: "var(--mh-bg)" }}>
 
+      {/* Create thread modal */}
+      {showCreateThread && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "var(--mh-surface)", border: "1px solid var(--mh-border)", borderRadius: 12, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <p style={{ color: "var(--mh-text)", fontWeight: 600, fontSize: 15 }}>New Thread</p>
+              <button onClick={() => { setShowCreateThread(false); setCtFrom(""); setCtTo(""); setCtMessage(""); }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--mh-muted)", display: "flex", alignItems: "center" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {([
+                { label: "From", value: ctFrom, setter: setCtFrom, placeholder: "Sender name" },
+                { label: "To", value: ctTo, setter: setCtTo, placeholder: "Recipient name" },
+              ] as { label: string; value: string; setter: (v: string) => void; placeholder: string }[]).map(({ label, value, setter, placeholder }) => (
+                <div key={label}>
+                  <label style={{ display: "block", color: "var(--mh-muted)", fontSize: 12, marginBottom: 6 }}>{label}</label>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    placeholder={placeholder}
+                    style={{ width: "100%", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "9px 12px", fontSize: 14, color: "var(--mh-text)", fontFamily: "var(--mh-font-body)", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+              ))}
+              <div>
+                <label style={{ display: "block", color: "var(--mh-muted)", fontSize: 12, marginBottom: 6 }}>Message</label>
+                <textarea
+                  value={ctMessage}
+                  onChange={(e) => setCtMessage(e.target.value)}
+                  placeholder="Type your first message…"
+                  rows={3}
+                  style={{ width: "100%", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "9px 12px", fontSize: 14, color: "var(--mh-text)", fontFamily: "var(--mh-font-body)", outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+              <button
+                onClick={() => { setShowCreateThread(false); setCtFrom(""); setCtTo(""); setCtMessage(""); }}
+                style={{ background: "transparent", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: "pointer", color: "var(--mh-muted)", fontFamily: "var(--mh-font-body)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleCreateThread()}
+                disabled={ctCreating || !ctFrom.trim() || !ctTo.trim() || !ctMessage.trim()}
+                style={{ background: "var(--mh-accent)", color: "var(--mh-accent-fg)", border: "none", borderRadius: 6, padding: "8px 18px", fontSize: 13, fontWeight: 600, cursor: ctCreating ? "not-allowed" : "pointer", opacity: ctCreating ? 0.6 : 1, fontFamily: "var(--mh-font-body)" }}
+              >
+                {ctCreating ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Panel 1: API Keys */}
       <div style={{ ...panelStyle, width: 200 }}>
         <div style={panelHeaderStyle}>
@@ -397,9 +501,14 @@ export function Messages() {
         <div style={panelHeaderStyle}>
           <span>{selectedKey ? selectedKey.name : "Threads"}</span>
           {selectedKey && (
-            <button style={refreshBtnStyle} onClick={() => void loadRecipients(selectedKey, true)} title="Refresh threads">
-              <RefreshCw size={12} style={{ animation: recipientsLoading ? "spin 1s linear infinite" : undefined }} />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button style={refreshBtnStyle} onClick={() => void loadRecipients(selectedKey, true)} title="Refresh threads">
+                <RefreshCw size={12} style={{ animation: recipientsLoading ? "spin 1s linear infinite" : undefined }} />
+              </button>
+              <button style={refreshBtnStyle} onClick={() => setShowCreateThread(true)} title="New thread">
+                <Plus size={13} />
+              </button>
+            </div>
           )}
         </div>
 

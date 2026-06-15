@@ -2,7 +2,7 @@ import React from 'react'
 import { NavLink, Link } from 'react-router'
 import { LayoutDashboard, MessageSquare, Key, User, Sun, Moon } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
-import { demoUser } from '../../data/demo'
+import { useAuth } from '../../context/AuthContext'
 
 const navItems = [
   { to: '/dashboard', label: 'Overview', Icon: LayoutDashboard },
@@ -13,6 +13,17 @@ const navItems = [
 
 export function Sidebar() {
   const { theme, toggle } = useTheme()
+  const { session } = useAuth()
+
+  const initials =
+    session?.user.user_metadata?.full_name
+      ?.split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p: string) => p[0]?.toUpperCase())
+      .join('') ||
+    session?.user.email?.slice(0, 2).toUpperCase() ||
+    'MH'
 
   return (
     <div
@@ -133,7 +144,7 @@ export function Sidebar() {
               letterSpacing: '0.05em',
             }}
           >
-            {demoUser.initials}
+            {initials}
           </div>
           <div style={{ minWidth: 0 }}>
             <p
@@ -146,9 +157,11 @@ export function Sidebar() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {demoUser.name}
+              {session?.user.user_metadata?.full_name || session?.user.email || '—'}
             </p>
-            <p style={{ color: 'var(--mh-muted)', fontSize: 11 }}>{demoUser.role}</p>
+            <p style={{ color: 'var(--mh-muted)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {session?.user.email}
+            </p>
           </div>
         </div>
       </div>
