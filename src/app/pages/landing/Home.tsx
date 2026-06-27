@@ -3,19 +3,23 @@ import { useNavigate } from "react-router";
 import { Smartphone, Key, CheckCircle2 } from "lucide-react";
 import { CodeBlock } from "../../components/ui/CodeBlock";
 
-const curlCode = `curl -X POST https://api.mensahero.io/v1/messages \\
-  -H "Authorization: Bearer sk-live-YOUR_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "to": "+639171234567",
-    "body": "Your OTP is 847291",
-    "key_id": "key_production"
-  }'`;
+const curlCode = `curl --location 'https://mensahero.onrender.com/api/messages/create' \\
+--header 'Content-Type: application/json' \\
+--data '{
+  "apiKey": "YOUR_API_KEY",
+  "to": "+639123123123",
+  "message": "YOUR_MESSAGE"
+}'`;
 
 const curlResponse = `{
-  "id": "msg_01JX4K2M8RPTQZBN",
-  "status": "queued",
-  "to": "+639171234567"
+    "message": "YOUR_MESSAGE",
+    "receiver": "+639123123123",
+    "sender": null,
+    "api_id": "ec674b6b-22e9-4aa1-be1b-c709e835375d",
+    "created_at": null,
+    "id": "7d4a35d9-4048-4eb8-be24-28a248b9e7eb",
+    "sent_at": null,
+    "status": "pending"
 }`;
 
 const features = [
@@ -130,38 +134,35 @@ export function Home() {
         <CodeBlock code={curlCode} language="bash">
           <span style={{ color: "#8B949E" }}># Send your first SMS{"\n"}</span>
           <span style={{ color: "#79C0FF" }}>curl</span>
-          <span style={{ color: "#E6EDF3" }}>{" -X POST "}</span>
+          <span style={{ color: "#E6EDF3" }}>{" --location "}</span>
           <span style={{ color: "#A5D6FF" }}>
-            https://api.mensahero.io/v1/messages
+            'https://mensahero.onrender.com/api/messages/create'
           </span>
-          {" \\\n  "}
-          <span style={{ color: "#E6EDF3" }}>{"-H "}</span>
+          {" \\\n"}
+          <span style={{ color: "#79C0FF" }}>--header</span>
+          <span style={{ color: "#E6EDF3" }}>{" "}</span>
           <span style={{ color: "#A5D6FF" }}>
-            "Authorization: Bearer sk-live-••••••••"
+            'Content-Type: application/json'
           </span>
-          {" \\\n  "}
-          <span style={{ color: "#E6EDF3" }}>{"-H "}</span>
-          <span style={{ color: "#A5D6FF" }}>
-            "Content-Type: application/json"
-          </span>
-          {" \\\n  "}
-          <span style={{ color: "#E6EDF3" }}>{"-d '{\n    "}</span>
+          {" \\\n"}
+          <span style={{ color: "#79C0FF" }}>--data</span>
+          <span style={{ color: "#E6EDF3" }}>{" '{\n  "}</span>
+          <span style={{ color: "#7EE787" }}>"apiKey"</span>
+          <span style={{ color: "#E6EDF3" }}>{": "}</span>
+          <span style={{ color: "#A5D6FF" }}>"YOUR_API_KEY"</span>
+          <span style={{ color: "#E6EDF3" }}>{",\n  "}</span>
           <span style={{ color: "#7EE787" }}>"to"</span>
           <span style={{ color: "#E6EDF3" }}>{": "}</span>
-          <span style={{ color: "#A5D6FF" }}>"+639171234567"</span>
-          <span style={{ color: "#E6EDF3" }}>{",\n    "}</span>
-          <span style={{ color: "#7EE787" }}>"body"</span>
+          <span style={{ color: "#A5D6FF" }}>"+639123123123"</span>
+          <span style={{ color: "#E6EDF3" }}>{",\n  "}</span>
+          <span style={{ color: "#7EE787" }}>"message"</span>
           <span style={{ color: "#E6EDF3" }}>{": "}</span>
-          <span style={{ color: "#A5D6FF" }}>"Your OTP is 847291"</span>
-          <span style={{ color: "#E6EDF3" }}>{",\n    "}</span>
-          <span style={{ color: "#7EE787" }}>"key_id"</span>
-          <span style={{ color: "#E6EDF3" }}>{": "}</span>
-          <span style={{ color: "#A5D6FF" }}>"key_production"</span>
-          <span style={{ color: "#E6EDF3" }}>{"\n  }'"}</span>
+          <span style={{ color: "#A5D6FF" }}>"YOUR_MESSAGE"</span>
+          <span style={{ color: "#E6EDF3" }}>{"\n}'"}</span>
           {"\n\n"}
           <span style={{ color: "#8B949E" }}>{"# → "}</span>
           <span style={{ color: "#7EE787" }}>
-            {'{"id":"msg_01JX4K...","status":"queued"}'}
+            {'{"message":"YOUR_MESSAGE","receiver":"+639123123123","status":"pending"}'}
           </span>
         </CodeBlock>
       </section>

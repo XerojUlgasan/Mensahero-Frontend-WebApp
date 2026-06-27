@@ -2,11 +2,7 @@ import React, { useState } from 'react'
 import { CodeBlock } from '../../components/ui/CodeBlock'
 
 const sections = [
-  { id: 'authentication', label: 'Authentication' },
-  { id: 'send-message', label: 'Send Message' },
-  { id: 'list-messages', label: 'List Messages' },
-  { id: 'webhooks', label: 'Webhooks' },
-  { id: 'error-codes', label: 'Error Codes' },
+  { id: 'create-message', label: 'Create Message' },
 ]
 
 function DocRow({ description, code }: { description: React.ReactNode; code: React.ReactNode }) {
@@ -26,7 +22,7 @@ function DocRow({ description, code }: { description: React.ReactNode; code: Rea
 }
 
 export function Docs() {
-  const [activeSection, setActiveSection] = useState('authentication')
+  const [activeSection, setActiveSection] = useState('create-message')
 
   return (
     <div style={{ background: 'var(--mh-bg)' }}>
@@ -85,7 +81,7 @@ export function Docs() {
         </aside>
 
         <main style={{ flex: 1, minWidth: 0 }}>
-          <section id="authentication" style={{ marginBottom: 64 }}>
+          <section id="create-message" style={{ marginBottom: 64 }}>
             <h2
               style={{
                 color: 'var(--mh-text)',
@@ -96,73 +92,10 @@ export function Docs() {
                 marginBottom: 8,
               }}
             >
-              Authentication
+              Create Message
             </h2>
             <p style={{ color: 'var(--mh-muted)', fontSize: 14, marginBottom: 24 }}>
-              MensaHERO uses API keys for authentication. Pass your key in the{' '}
-              <code
-                style={{
-                  fontFamily: 'var(--mh-font-mono)',
-                  background: 'var(--mh-border)',
-                  padding: '1px 5px',
-                  borderRadius: 4,
-                  fontSize: 13,
-                }}
-              >
-                Authorization
-              </code>{' '}
-              header.
-            </p>
-            <DocRow
-              description={
-                <div>
-                  <p
-                    style={{ color: 'var(--mh-text)', fontSize: 14, fontWeight: 500, marginBottom: 8 }}
-                  >
-                    Bearer token
-                  </p>
-                  <p style={{ color: 'var(--mh-muted)', fontSize: 14, lineHeight: 1.6 }}>
-                    All requests must include your API key prefixed with{' '}
-                    <code
-                      style={{
-                        fontFamily: 'var(--mh-font-mono)',
-                        background: 'var(--mh-border)',
-                        padding: '1px 5px',
-                        borderRadius: 4,
-                        fontSize: 12,
-                      }}
-                    >
-                      Bearer
-                    </code>
-                    . Keys are scoped per project and can be revoked at any time from the dashboard.
-                  </p>
-                </div>
-              }
-              code={
-                <CodeBlock language="http">
-                  <span style={{ color: '#79C0FF' }}>Authorization</span>
-                  <span style={{ color: '#E6EDF3' }}>: Bearer </span>
-                  <span style={{ color: '#A5D6FF' }}>sk-live-YOUR_API_KEY</span>
-                </CodeBlock>
-              }
-            />
-          </section>
-
-          <section id="send-message" style={{ marginBottom: 64 }}>
-            <h2
-              style={{
-                color: 'var(--mh-text)',
-                fontWeight: 700,
-                fontSize: 24,
-                fontFamily: 'var(--mh-font-display)',
-                letterSpacing: '-0.01em',
-                marginBottom: 8,
-              }}
-            >
-              Send Message
-            </h2>
-            <p style={{ color: 'var(--mh-muted)', fontSize: 14, marginBottom: 24 }}>
-              Queue an SMS for delivery through your Android agent.
+              Send an SMS message through your Server API and let our SMS gateway app handle the rest!
             </p>
 
             <div
@@ -197,7 +130,7 @@ export function Docs() {
                   color: 'var(--mh-text)',
                 }}
               >
-                /v1/messages
+                /api/messages/create
               </code>
             </div>
 
@@ -210,9 +143,9 @@ export function Docs() {
                     Request body
                   </p>
                   {[
-                    { field: 'to', type: 'string', req: true, desc: 'Recipient phone number in E.164 format' },
-                    { field: 'body', type: 'string', req: true, desc: 'SMS message content (max 160 chars per segment)' },
-                    { field: 'key_id', type: 'string', req: false, desc: 'API key ID to use for sending. Defaults to your primary key.' },
+                    { field: 'apiKey', type: 'string', req: true, desc: 'Your MensaHERO API key' },
+                    { field: 'to', type: 'string', req: true, desc: 'Recipient phone number in E.164 format (e.g., +639123123123)' },
+                    { field: 'message', type: 'string', req: true, desc: 'SMS message content to send' },
                   ].map(p => (
                     <div
                       key={p.field}
@@ -257,271 +190,84 @@ export function Docs() {
                 </div>
               }
               code={
-                <CodeBlock language="json">
-                  <span style={{ color: '#8B949E' }}>{'// Request\n'}</span>
-                  <span style={{ color: '#E6EDF3' }}>{'{\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"to"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"+639171234567"</span>
-                  <span style={{ color: '#E6EDF3' }}>{',\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"body"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"Your OTP is 847291"</span>
-                  <span style={{ color: '#E6EDF3' }}>{',\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"key_id"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"key_production"</span>
-                  <span style={{ color: '#E6EDF3' }}>{'}\n\n'}</span>
-                  <span style={{ color: '#8B949E' }}>{'// Response 201\n'}</span>
-                  <span style={{ color: '#E6EDF3' }}>{'{\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"id"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"msg_01JX4K2M8RPTQZBN"</span>
-                  <span style={{ color: '#E6EDF3' }}>{',\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"status"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"queued"</span>
-                  <span style={{ color: '#E6EDF3' }}>{',\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"to"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"+639171234567"</span>
-                  <span style={{ color: '#E6EDF3' }}>{'}'}</span>
-                </CodeBlock>
-              }
-            />
-          </section>
-
-          <section id="list-messages" style={{ marginBottom: 64 }}>
-            <h2
-              style={{
-                color: 'var(--mh-text)',
-                fontWeight: 700,
-                fontSize: 24,
-                fontFamily: 'var(--mh-font-display)',
-                letterSpacing: '-0.01em',
-                marginBottom: 8,
-              }}
-            >
-              List Messages
-            </h2>
-            <p style={{ color: 'var(--mh-muted)', fontSize: 14, marginBottom: 24 }}>
-              Retrieve a paginated list of sent messages, optionally filtered by status or recipient.
-            </p>
-
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                background: 'var(--mh-surface)',
-                border: '1px solid var(--mh-border)',
-                borderRadius: 6,
-                padding: '6px 12px',
-                marginBottom: 24,
-              }}
-            >
-              <span
-                style={{
-                  background: '#DBEAFE',
-                  color: '#1D4ED8',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  fontFamily: 'var(--mh-font-mono)',
-                }}
-              >
-                GET
-              </span>
-              <code
-                style={{
-                  fontFamily: 'var(--mh-font-mono)',
-                  fontSize: 13,
-                  color: 'var(--mh-text)',
-                }}
-              >
-                /v1/messages
-              </code>
-            </div>
-
-            <DocRow
-              description={
-                <div>
-                  <p style={{ color: 'var(--mh-muted)', fontSize: 14, lineHeight: 1.6 }}>
-                    Returns up to 50 messages per page. Use{' '}
-                    <code
-                      style={{
-                        fontFamily: 'var(--mh-font-mono)',
-                        background: 'var(--mh-border)',
-                        padding: '1px 5px',
-                        borderRadius: 4,
-                        fontSize: 12,
-                      }}
-                    >
-                      cursor
-                    </code>{' '}
-                    for pagination. Filter by{' '}
-                    <code
-                      style={{
-                        fontFamily: 'var(--mh-font-mono)',
-                        background: 'var(--mh-border)',
-                        padding: '1px 5px',
-                        borderRadius: 4,
-                        fontSize: 12,
-                      }}
-                    >
-                      status
-                    </code>{' '}
-                    or{' '}
-                    <code
-                      style={{
-                        fontFamily: 'var(--mh-font-mono)',
-                        background: 'var(--mh-border)',
-                        padding: '1px 5px',
-                        borderRadius: 4,
-                        fontSize: 12,
-                      }}
-                    >
-                      to
-                    </code>
-                    .
-                  </p>
-                </div>
-              }
-              code={
                 <CodeBlock language="bash">
                   <span style={{ color: '#79C0FF' }}>curl</span>
-                  <span style={{ color: '#E6EDF3' }}>
-                    {
-                      ' "https://api.mensahero.io/v1/messages\n     ?status=delivered&limit=20" \\\n  '
-                    }
-                  </span>
-                  <span style={{ color: '#E6EDF3' }}>{'-H '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"Authorization: Bearer sk-live-••••••••"</span>
+                  <span style={{ color: '#E6EDF3' }}>{" --location '"}</span>
+                  <span style={{ color: '#A5D6FF' }}>https://mensahero.onrender.com/api/messages/create</span>
+                  <span style={{ color: '#E6EDF3' }}>{"' \\\n"}</span>
+                  <span style={{ color: '#79C0FF' }}>--header</span>
+                  <span style={{ color: '#E6EDF3' }}>{" '"}</span>
+                  <span style={{ color: '#A5D6FF' }}>Content-Type: application/json</span>
+                  <span style={{ color: '#E6EDF3' }}>{"' \\\n"}</span>
+                  <span style={{ color: '#79C0FF' }}>--data</span>
+                  <span style={{ color: '#E6EDF3' }}>{" '{\n  "}</span>
+                  <span style={{ color: '#7EE787' }}>"apiKey"</span>
+                  <span style={{ color: '#E6EDF3' }}>{": "}</span>
+                  <span style={{ color: '#A5D6FF' }}>"YOUR_API_KEY"</span>
+                  <span style={{ color: '#E6EDF3' }}>{",\n  "}</span>
+                  <span style={{ color: '#7EE787' }}>"to"</span>
+                  <span style={{ color: '#E6EDF3' }}>{": "}</span>
+                  <span style={{ color: '#A5D6FF' }}>"+639123123123"</span>
+                  <span style={{ color: '#E6EDF3' }}>{",\n  "}</span>
+                  <span style={{ color: '#7EE787' }}>"message"</span>
+                  <span style={{ color: '#E6EDF3' }}>{": "}</span>
+                  <span style={{ color: '#A5D6FF' }}>"YOUR_MESSAGE"</span>
+                  <span style={{ color: '#E6EDF3' }}>{"\n}'"}</span>
                 </CodeBlock>
               }
             />
-          </section>
-
-          <section id="webhooks" style={{ marginBottom: 64 }}>
-            <h2
-              style={{
-                color: 'var(--mh-text)',
-                fontWeight: 700,
-                fontSize: 24,
-                fontFamily: 'var(--mh-font-display)',
-                letterSpacing: '-0.01em',
-                marginBottom: 8,
-              }}
-            >
-              Webhooks
-            </h2>
-            <p style={{ color: 'var(--mh-muted)', fontSize: 14, marginBottom: 24 }}>
-              MensaHERO sends a POST request to your configured URL whenever a message status changes.
-            </p>
 
             <DocRow
               description={
                 <div>
+                  <p
+                    style={{ color: 'var(--mh-text)', fontSize: 14, fontWeight: 500, marginBottom: 12 }}
+                  >
+                    Response
+                  </p>
                   <p style={{ color: 'var(--mh-muted)', fontSize: 14, lineHeight: 1.6 }}>
-                    Subscribe to status updates by configuring a webhook URL in your API key settings.
-                    Each event contains a full message object with the updated status field.
+                    Returns the created message object with a unique ID and initial status.
                   </p>
                 </div>
               }
               code={
                 <CodeBlock language="json">
-                  <span style={{ color: '#8B949E' }}>{'// POST https://your-app.com/webhook\n'}</span>
-                  <span style={{ color: '#E6EDF3' }}>{'{\n  '}</span>
-                  <span style={{ color: '#7EE787' }}>"event"</span>
-                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"message.delivered"</span>
-                  <span style={{ color: '#E6EDF3' }}>{',\n  '}</span>
+                  <span style={{ color: '#E6EDF3' }}>{'{\n    '}</span>
                   <span style={{ color: '#7EE787' }}>"message"</span>
-                  <span style={{ color: '#E6EDF3' }}>
-                    {': {\n    '}
-                  </span>
+                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
+                  <span style={{ color: '#A5D6FF' }}>"YOUR_MESSAGE"</span>
+                  <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
+                  <span style={{ color: '#7EE787' }}>"receiver"</span>
+                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
+                  <span style={{ color: '#A5D6FF' }}>"+639123123123"</span>
+                  <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
+                  <span style={{ color: '#7EE787' }}>"sender"</span>
+                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
+                  <span style={{ color: '#FF7B72' }}>null</span>
+                  <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
+                  <span style={{ color: '#7EE787' }}>"api_id"</span>
+                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
+                  <span style={{ color: '#A5D6FF' }}>"ec674b6b-22e9-4aa1-be1b-c709e835375d"</span>
+                  <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
+                  <span style={{ color: '#7EE787' }}>"created_at"</span>
+                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
+                  <span style={{ color: '#FF7B72' }}>null</span>
+                  <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
                   <span style={{ color: '#7EE787' }}>"id"</span>
                   <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"msg_01JX4K2M8RPTQZBN"</span>
+                  <span style={{ color: '#A5D6FF' }}>"7d4a35d9-4048-4eb8-be24-28a248b9e7eb"</span>
+                  <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
+                  <span style={{ color: '#7EE787' }}>"sent_at"</span>
+                  <span style={{ color: '#E6EDF3' }}>{': '}</span>
+                  <span style={{ color: '#FF7B72' }}>null</span>
                   <span style={{ color: '#E6EDF3' }}>{',\n    '}</span>
                   <span style={{ color: '#7EE787' }}>"status"</span>
                   <span style={{ color: '#E6EDF3' }}>{': '}</span>
-                  <span style={{ color: '#A5D6FF' }}>"delivered"</span>
-                  <span style={{ color: '#E6EDF3' }}>{'  \n  }\n}'}</span>
+                  <span style={{ color: '#A5D6FF' }}>"pending"</span>
+                  <span style={{ color: '#E6EDF3' }}>{'\n}'}</span>
                 </CodeBlock>
               }
             />
-          </section>
-
-          <section id="error-codes">
-            <h2
-              style={{
-                color: 'var(--mh-text)',
-                fontWeight: 700,
-                fontSize: 24,
-                fontFamily: 'var(--mh-font-display)',
-                letterSpacing: '-0.01em',
-                marginBottom: 8,
-              }}
-            >
-              Error Codes
-            </h2>
-            <p style={{ color: 'var(--mh-muted)', fontSize: 14, marginBottom: 24 }}>
-              MensaHERO uses standard HTTP status codes. Errors include a machine-readable code and a human message.
-            </p>
-
-            <div
-              style={{
-                background: 'var(--mh-surface)',
-                border: '1px solid var(--mh-border)',
-                borderRadius: 10,
-                overflow: 'hidden',
-              }}
-            >
-              {[
-                { code: '400', name: 'bad_request', desc: 'Missing or invalid request parameters.' },
-                { code: '401', name: 'unauthorized', desc: 'API key is missing or invalid.' },
-                { code: '403', name: 'forbidden', desc: 'API key is revoked or lacks permission.' },
-                { code: '404', name: 'not_found', desc: 'The requested resource does not exist.' },
-                { code: '429', name: 'rate_limited', desc: 'Too many requests. Retry after the returned backoff.' },
-                { code: '503', name: 'no_agent', desc: 'No Android agent is online for this key.' },
-              ].map((e, i) => (
-                <div
-                  key={e.code}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 16,
-                    padding: '14px 20px',
-                    borderBottom: i < 5 ? '1px solid var(--mh-border)' : 'none',
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: 'var(--mh-font-mono)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: 'var(--mh-red)',
-                      minWidth: 40,
-                    }}
-                  >
-                    {e.code}
-                  </span>
-                  <code
-                    style={{
-                      fontFamily: 'var(--mh-font-mono)',
-                      fontSize: 12,
-                      color: 'var(--mh-muted)',
-                      minWidth: 120,
-                    }}
-                  >
-                    {e.name}
-                  </code>
-                  <p style={{ fontSize: 13, color: 'var(--mh-muted)' }}>{e.desc}</p>
-                </div>
-              ))}
-            </div>
           </section>
         </main>
       </div>

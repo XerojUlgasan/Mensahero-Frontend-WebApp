@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Search, Send, Plus, X } from "lucide-react";
+import { RefreshCw, Search, Send, Plus, X, RotateCcw } from "lucide-react";
 import { Badge } from "../../components/ui/Badge";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -334,6 +334,27 @@ export function Messages() {
     }
   };
 
+  // ── Retry message ──────────────────────────────────────────────────────────
+  const handleRetry = async (messageId: string) => {
+    if (!session) return;
+    try {
+      const { getApiBaseUrl } = await import("../../lib/api");
+      const res = await fetch(`${getApiBaseUrl()}/api/messages/resend?messageId=${messageId}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: "",
+      });
+      if (res.ok) {
+        const updatedMsg = (await res.json()) as ApiMessage;
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? updatedMsg : m)));
+      }
+    } catch (e) {
+      console.error("Failed to retry message:", e);
+    }
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const visibleRecipients = useMemo(
     () => recipients.filter((r) => !search || r.receiver.toLowerCase().includes(search.toLowerCase())),
@@ -645,6 +666,16 @@ export function Messages() {
                     <span style={{ fontFamily: "var(--mh-font-mono)", fontSize: 11, color: "var(--mh-muted)", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", padding: "2px 7px", borderRadius: 4 }}>
                       from: {msg.sender}
                     </span>
+                    {msg.status?.toLowerCase() === "failed" && (
+                      <button
+                        onClick={() => void handleRetry(msg.id)}
+                        style={{ background: "transparent", border: "1px solid var(--mh-border)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--mh-muted)", fontFamily: "var(--mh-font-body)" }}
+                        title="Retry message"
+                      >
+                        <RotateCcw size={11} />
+                        Retry
+                      </button>
+                    )}
                     <span style={{ color: "var(--mh-muted)", fontSize: 12, marginLeft: "auto" }}>
                       {msg.created_at ? new Date(msg.created_at).toLocaleString() : ""}
                     </span>
