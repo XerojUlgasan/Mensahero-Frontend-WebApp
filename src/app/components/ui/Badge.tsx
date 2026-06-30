@@ -7,10 +7,11 @@ const config: Record<string, { label: string; bg: string; color: string; dot: st
   active: { label: 'Active', bg: '#DCFCE7', color: '#15803D', dot: '#16A34A' },
   revoked: { label: 'Revoked', bg: '#FEE2E2', color: '#B91C1C', dot: '#DC2626' },
   disabled: { label: 'Disabled', bg: '#F3F4F6', color: '#6B7280', dot: '#9CA3AF' },
+  inactive: { label: 'Inactive', bg: '#F3F4F6', color: '#6B7280', dot: '#9CA3AF' },
 }
 
 export function Badge({ status }: { status: string }) {
-  const c = config[status?.toLowerCase() as BadgeStatus] ?? config.pending
+  const c = config[status?.toLowerCase()] ?? config.pending
   return (
     <span
       style={{
