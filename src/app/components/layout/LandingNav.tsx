@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
-import { Sun, Moon, Menu, X } from "lucide-react";
+import { Sun, Moon, Menu, X, Download } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 
 const navLinks = [
@@ -87,6 +87,31 @@ export function LandingNav() {
             {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
           </button>
 
+          <a
+            href="https://drive.google.com/file/d/1rSYuMfHuKMyssJoNocvIjk5bZFZaKIsG/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              background: "transparent",
+              color: "var(--mh-text)",
+              border: "1px solid var(--mh-border)",
+              borderRadius: 6,
+              padding: "7px 14px",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: "var(--mh-font-body)",
+              whiteSpace: "nowrap",
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Download size={14} />
+            Download App
+          </a>
+
           <button
             onClick={() => navigate("/login")}
             style={{
@@ -149,6 +174,25 @@ export function LandingNav() {
               {link.label}
             </Link>
           ))}
+          <a
+            href="https://drive.google.com/file/d/1rSYuMfHuKMyssJoNocvIjk5bZFZaKIsG/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setMobileOpen(false)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              color: "var(--mh-text)",
+              textDecoration: "none",
+              padding: "10px 0",
+              fontSize: 15,
+              borderBottom: "1px solid var(--mh-border)",
+            }}
+          >
+            <Download size={16} />
+            Download App
+          </a>
         </div>
       )}
     </nav>
