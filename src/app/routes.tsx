@@ -7,6 +7,7 @@ import { Home } from "./pages/landing/Home";
 import { About } from "./pages/landing/About";
 import { Features } from "./pages/landing/Features";
 import { Docs } from "./pages/landing/Docs";
+import { Pricing } from "./pages/landing/Pricing";
 import { Contact } from "./pages/landing/Contact";
 import { Login } from "./pages/auth/Login";
 import { Register } from "./pages/auth/Register";
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: "/features", Component: Features },
       { path: "/docs", Component: Docs },
       { path: "/contact", Component: Contact },
+      { path: "/pricing", Component: Pricing },
     ],
   },
 ]);

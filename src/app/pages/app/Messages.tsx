@@ -151,7 +151,11 @@ export function Messages() {
       const cached = readCachedJson<ApiMessage[]>(cacheKey);
 
       if (pageNum === 0 && cached && !prepend) {
-        setMessages(cached);
+        setMessages([...cached].reverse());
+        requestAnimationFrame(() => {
+          if (msgScrollRef.current)
+            msgScrollRef.current.scrollTop = msgScrollRef.current.scrollHeight;
+        });
       }
 
       if (pageNum === 0) setMessagesLoading(true);
@@ -166,15 +170,28 @@ export function Messages() {
         writeCachedJson(cacheKey, next);
         setHasMore(next.length === PAGE_SIZE);
 
+        const ordered = [...next].reverse();
+
         if (pageNum === 0) {
-          if (hasDataChanged(cached, next)) setMessages(next);
+          if (hasDataChanged(cached, next)) {
+            setMessages(ordered);
+            requestAnimationFrame(() => {
+              if (msgScrollRef.current)
+                msgScrollRef.current.scrollTop = msgScrollRef.current.scrollHeight;
+            });
+          } else if (cached) {
+            requestAnimationFrame(() => {
+              if (msgScrollRef.current)
+                msgScrollRef.current.scrollTop = msgScrollRef.current.scrollHeight;
+            });
+          }
         } else {
           // prepend older messages, preserve scroll
           const el = msgScrollRef.current;
           const prevHeight = el?.scrollHeight ?? 0;
           setMessages((prev) => {
             const existingIds = new Set(prev.map((m) => m.id));
-            const fresh = next.filter((m) => !existingIds.has(m.id));
+            const fresh = ordered.filter((m) => !existingIds.has(m.id));
             return [...fresh, ...prev];
           });
           requestAnimationFrame(() => {

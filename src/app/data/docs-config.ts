@@ -1,74 +1,99 @@
 export const languages = [
-  { id: 'curl', label: 'cURL' },
+  { id: "curl", label: "cURL" },
   // Add more languages here in the future:
   // { id: 'node', label: 'Node.js' },
   // { id: 'react', label: 'React' },
-] as const
+] as const;
 
-export type LanguageId = (typeof languages)[number]['id']
+export type LanguageId = (typeof languages)[number]["id"];
 
 export interface Field {
-  field: string
-  type: string
-  required: boolean
-  description: string
+  field: string;
+  type: string;
+  required: boolean;
+  description: string;
 }
 
 export interface CodeExample {
-  description: string
-  code: string
-  language: string
+  description: string;
+  code: string;
+  language: string;
 }
 
 export interface EndpointExample {
-  label: string
-  examples: Record<LanguageId, CodeExample>
-  fields?: Field[]
+  label: string;
+  examples: Record<LanguageId, CodeExample>;
+  fields?: Field[];
 }
 
 export interface DocsSection {
-  id: string
-  label: string
-  description: string
-  method: string
-  endpoint: string
-  examples: EndpointExample[]
+  id: string;
+  label: string;
+  description: string;
+  method: string;
+  endpoint: string;
+  examples: EndpointExample[];
 }
 
 export const docsConfig: DocsSection[] = [
   {
-    id: 'create-message',
-    label: 'Create Message',
-    description: 'Send an SMS message through your Server API and let our SMS gateway app handle the rest!',
-    method: 'POST',
-    endpoint: '/api/messages/create',
+    id: "create-message",
+    label: "Create Message",
+    description:
+      "Send an SMS message through your Server API and let our SMS gateway app handle the rest!",
+    method: "POST",
+    endpoint: "/api/messages/create",
     examples: [
       {
-        label: 'Request body',
+        label: "Request body",
         fields: [
-          { field: 'apiKey', type: 'string', required: true, description: 'Your MensaHERO API key' },
-          { field: 'to', type: 'string', required: true, description: 'Recipient phone number in E.164 format (e.g., +639123123123)' },
-          { field: 'message', type: 'string', required: true, description: 'SMS message content to send' },
+          {
+            field: "apiKey",
+            type: "string",
+            required: true,
+            description: "Your MensaHERO API key",
+          },
+          {
+            field: "from",
+            type: "string",
+            required: true,
+            description: "Your device name you want to use.",
+          },
+          {
+            field: "to",
+            type: "string",
+            required: true,
+            description:
+              "Recipient phone number in E.164 format (e.g., +639123123123)",
+          },
+          {
+            field: "message",
+            type: "string",
+            required: true,
+            description: "SMS message content to send",
+          },
         ],
         examples: {
           curl: {
-            description: 'Request body',
+            description: "Request body",
             code: `curl --location 'https://mensahero.onrender.com/api/messages/create' \\
 --header 'Content-Type: application/json' \\
 --data '{
   "apiKey": "YOUR_API_KEY",
+  "sender": "DEVICE_NAME"
   "to": "+639123123123",
   "message": "YOUR_MESSAGE"
 }'`,
-            language: 'bash',
+            language: "bash",
           },
         },
       },
       {
-        label: 'Response',
+        label: "Response",
         examples: {
           curl: {
-            description: 'Returns the created message object with a unique ID and initial status.',
+            description:
+              "Returns the created message object with a unique ID and initial status.",
             code: `{
     "message": "YOUR_MESSAGE",
     "receiver": "+639123123123",
@@ -79,11 +104,11 @@ export const docsConfig: DocsSection[] = [
     "sent_at": null,
     "status": "pending"
 }`,
-            language: 'json',
+            language: "json",
           },
         },
       },
     ],
   },
   // Add more sections here in the future
-]
+];

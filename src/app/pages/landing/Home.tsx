@@ -7,6 +7,7 @@ const curlCode = `curl --location 'https://mensahero.onrender.com/api/messages/c
 --header 'Content-Type: application/json' \\
 --data '{
   "apiKey": "YOUR_API_KEY",
+  "from": "DEVICE_NAME",
   "to": "+639123123123",
   "message": "YOUR_MESSAGE"
 }'`;
@@ -14,10 +15,10 @@ const curlCode = `curl --location 'https://mensahero.onrender.com/api/messages/c
 const curlResponse = `{
     "message": "YOUR_MESSAGE",
     "receiver": "+639123123123",
-    "sender": null,
-    "api_id": "ec674b6b-22e9-4aa1-be1b-c709e835375d",
-    "created_at": null,
-    "id": "7d4a35d9-4048-4eb8-be24-28a248b9e7eb",
+    "sender": "376e5931-6319-40c6-bd2f-d3e68c673c58",
+    "api_id": "5b1bd1e7-c815-4856-a981-3099deba803d",
+    "created_at": 2026-07-02 15:31:15.151408+00,
+    "id": "0af4d06d-5bff-4620-8053-753fa3cf9805",
     "sent_at": null,
     "status": "pending"
 }`;
@@ -140,7 +141,7 @@ export function Home() {
           </span>
           {" \\\n"}
           <span style={{ color: "#79C0FF" }}>--header</span>
-          <span style={{ color: "#E6EDF3" }}>{" "}</span>
+          <span style={{ color: "#E6EDF3" }}> </span>
           <span style={{ color: "#A5D6FF" }}>
             'Content-Type: application/json'
           </span>
@@ -151,6 +152,10 @@ export function Home() {
           <span style={{ color: "#E6EDF3" }}>{": "}</span>
           <span style={{ color: "#A5D6FF" }}>"YOUR_API_KEY"</span>
           <span style={{ color: "#E6EDF3" }}>{",\n  "}</span>
+          <span style={{ color: "#7EE787" }}>"from"</span>
+          <span style={{ color: "#E6EDF3" }}>{": "}</span>
+          <span style={{ color: "#A5D6FF" }}>"DEVICE_NAME"</span>
+          <span style={{ color: "#E6EDF3" }}>{",\n  "}</span>
           <span style={{ color: "#7EE787" }}>"to"</span>
           <span style={{ color: "#E6EDF3" }}>{": "}</span>
           <span style={{ color: "#A5D6FF" }}>"+639123123123"</span>
@@ -160,9 +165,18 @@ export function Home() {
           <span style={{ color: "#A5D6FF" }}>"YOUR_MESSAGE"</span>
           <span style={{ color: "#E6EDF3" }}>{"\n}'"}</span>
           {"\n\n"}
-          <span style={{ color: "#8B949E" }}>{"# → "}</span>
+          <span style={{ color: "#8B949E" }}>{"# Response → "}</span>
           <span style={{ color: "#7EE787" }}>
-            {'{"message":"YOUR_MESSAGE","receiver":"+639123123123","status":"pending"}'}
+            {`{
+    "message": "YOUR_MESSAGE",
+    "receiver": "+639123123123",
+    "sender": "3f7e487c-c620-4ca0-ac8e-2f3bc75d69ca",
+    "api_id": "ec674b6b-22e9-4aa1-be1b-c709e835375d",
+    "created_at": 2026-07-02 15:31:15.151408+00,
+    "id": "7d4a35d9-4048-4eb8-be24-28a248b9e7eb",
+    "sent_at": null,
+    "status": "pending"
+}`}
           </span>
         </CodeBlock>
       </section>
