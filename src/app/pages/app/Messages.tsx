@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Search, Send, Plus, X, RotateCcw } from "lucide-react";
+import { RefreshCw, Search, Send, Plus, X, RotateCcw, History } from "lucide-react";
 import { Badge } from "../../components/ui/Badge";
 import { useAuth } from "../../context/AuthContext";
+import { useSmsHistory } from "../../hooks/useSmsHistory";
 import {
   createCacheKey,
   fetchJson,
@@ -35,6 +36,18 @@ interface ApiMessage {
   status: string | null;
 }
 
+interface Device {
+  id: string;
+  apiId: string;
+  deviceName: string;
+  fcm_token: string;
+  isActive: boolean;
+  last_used: string;
+  created_at: string;
+  updated_at: string;
+  ownerId: string;
+}
+
 export function Messages() {
   const { session } = useAuth();
 
@@ -62,6 +75,25 @@ export function Messages() {
   const [fromInput, setFromInput] = useState("");
   const [msgInput, setMsgInput] = useState("");
   const [sending, setSending] = useState(false);
+
+  // Devices for selected key
+  const [devices, setDevices] = useState<Device[]>([]);
+
+  // Device SMS history (on-demand pull from the gateway device, merged into the thread)
+  const [historyEnabled, setHistoryEnabled] = useState(false);
+  const [historyDeviceId, setHistoryDeviceId] = useState<string>("");
+  const activeDevices = useMemo(() => devices.filter((d) => d.isActive), [devices]);
+  const {
+    status: historyStatus,
+    messages: historyMessages,
+    failureReason: historyFailureReason,
+    error: historyError,
+    retry: retryHistory,
+  } = useSmsHistory(
+    historyEnabled ? selectedKey?.id : undefined,
+    historyEnabled ? historyDeviceId || undefined : undefined,
+    historyEnabled ? selectedRecipient : undefined,
+  );
 
   // Create thread modal
   const [showCreateThread, setShowCreateThread] = useState(false);
@@ -120,16 +152,43 @@ export function Messages() {
     [session],
   );
 
+  const loadDevices = useCallback(
+    async (key: ApiKey) => {
+      if (!session) return;
+      const cacheKey = createCacheKey(`devices-${key.id}`, session);
+      const cached = readCachedJson<Device[]>(cacheKey);
+      if (cached) setDevices(cached);
+      try {
+        const { getApiBaseUrl } = await import("../../lib/api");
+        const res = await fetch(`${getApiBaseUrl()}/api/devices/list?apiId=${key.id}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const next = (await res.json()) as Device[];
+        writeCachedJson(cacheKey, next);
+        if (hasDataChanged(cached, next)) setDevices(next);
+      } catch (e) {
+        if (!cached) console.error("Failed to load devices:", e);
+      }
+    },
+    [session],
+  );
+
   const handleKeySelect = (key: ApiKey) => {
     setSelectedKey(key);
     setSelectedRecipient(null);
+    setHistoryEnabled(false);
+    setHistoryDeviceId("");
     setRecipients([]);
     setMessages([]);
+    setDevices([]);
     setSearch("");
     setFilter("ALL");
     setPage(0);
     setHasMore(true);
+    setFromInput("");
     void loadRecipients(key);
+    void loadDevices(key);
   };
 
   // ── Panel 3: load messages for a recipient ────────────────────────────────
@@ -233,6 +292,8 @@ export function Messages() {
   const handleRecipientSelect = (recipient: string) => {
     if (!selectedKey) return;
     setSelectedRecipient(recipient);
+    // History belongs to the previously selected thread; stop merging it.
+    setHistoryEnabled(false);
     setMessages([]);
     setFilter("ALL");
     setPage(0);
@@ -372,11 +433,64 @@ export function Messages() {
     }
   };
 
+  // ── Device SMS history ──────────────────────────────────────────────────────
+  const handleToggleHistory = () => {
+    if (!selectedKey || !selectedRecipient) return;
+    setHistoryEnabled((prev) => {
+      const next = !prev;
+      if (next) {
+        // Default to the first active device for this key.
+        setHistoryDeviceId((d) => d || activeDevices[0]?.id || "");
+      }
+      return next;
+    });
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const visibleRecipients = useMemo(
     () => recipients.filter((r) => !search || r.receiver.toLowerCase().includes(search.toLowerCase())),
     [recipients, search],
   );
+
+  // Merge DB messages with on-device history into a single date-ordered thread.
+  const timeline = useMemo(() => {
+    const dbTs = (m: ApiMessage) => {
+      const raw = m.sent_at ?? m.created_at;
+      const t = raw ? Date.parse(raw) : NaN;
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    const dbItems = messages.map((m) => ({
+      kind: "db" as const,
+      id: `db-${m.id}`,
+      ts: dbTs(m),
+      db: m,
+    }));
+
+    // Only stitch device messages in once we actually have them (COMPLETED).
+    const deviceItems =
+      historyEnabled && historyStatus === "COMPLETED"
+        ? historyMessages
+            // Drop device copies that clearly mirror an outbound DB message
+            // (same text within ~2 min) so the merged view doesn't double up.
+            .filter((h) => {
+              if (h.direction !== "SENT") return true;
+              return !messages.some(
+                (m) =>
+                  m.message.trim() === h.body.trim() &&
+                  Math.abs(dbTs(m) - h.timestamp) < 120_000,
+              );
+            })
+            .map((h, i) => ({
+              kind: "device" as const,
+              id: `dev-${h.timestamp}-${i}`,
+              ts: h.timestamp,
+              device: h,
+            }))
+        : [];
+
+    return [...dbItems, ...deviceItems].sort((a, b) => a.ts - b.ts);
+  }, [messages, historyEnabled, historyStatus, historyMessages]);
 
   const statusDot = (status: string | null) =>
     status === "delivered"
@@ -428,6 +542,35 @@ export function Messages() {
     textAlign: "center",
   };
 
+  const historyBannerStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: "var(--mh-surface)",
+    border: "1px solid var(--mh-border)",
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontSize: 12,
+    color: "var(--mh-muted)",
+    flexShrink: 0,
+  };
+
+  const historyRetryBtnStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    background: "transparent",
+    border: "1px solid currentColor",
+    borderRadius: 4,
+    padding: "3px 8px",
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    color: "inherit",
+    fontFamily: "var(--mh-font-body)",
+    flexShrink: 0,
+  };
+
   return (
     <div style={{ height: "calc(100vh - 56px)", display: "flex", overflow: "hidden", background: "var(--mh-bg)" }}>
 
@@ -442,21 +585,29 @@ export function Messages() {
               </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {([
-                { label: "From", value: ctFrom, setter: setCtFrom, placeholder: "Sender name" },
-                { label: "To", value: ctTo, setter: setCtTo, placeholder: "Recipient name" },
-              ] as { label: string; value: string; setter: (v: string) => void; placeholder: string }[]).map(({ label, value, setter, placeholder }) => (
-                <div key={label}>
-                  <label style={{ display: "block", color: "var(--mh-muted)", fontSize: 12, marginBottom: 6 }}>{label}</label>
-                  <input
-                    type="text"
-                    value={value}
-                    onChange={(e) => setter(e.target.value)}
-                    placeholder={placeholder}
-                    style={{ width: "100%", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "9px 12px", fontSize: 14, color: "var(--mh-text)", fontFamily: "var(--mh-font-body)", outline: "none", boxSizing: "border-box" }}
-                  />
-                </div>
-              ))}
+              <div>
+                <label style={{ display: "block", color: "var(--mh-muted)", fontSize: 12, marginBottom: 6 }}>From</label>
+                <select
+                  value={ctFrom}
+                  onChange={(e) => setCtFrom(e.target.value)}
+                  style={{ width: "100%", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "9px 12px", fontSize: 14, color: ctFrom ? "var(--mh-text)" : "var(--mh-muted)", fontFamily: "var(--mh-font-body)", outline: "none", boxSizing: "border-box" }}
+                >
+                  <option value="">Select device (sender)…</option>
+                  {devices.filter((d) => d.isActive).map((d) => (
+                    <option key={d.id} value={d.deviceName}>{d.deviceName}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", color: "var(--mh-muted)", fontSize: 12, marginBottom: 6 }}>To</label>
+                <input
+                  type="text"
+                  value={ctTo}
+                  onChange={(e) => setCtTo(e.target.value)}
+                  placeholder="Recipient name"
+                  style={{ width: "100%", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "9px 12px", fontSize: 14, color: "var(--mh-text)", fontFamily: "var(--mh-font-body)", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
               <div>
                 <label style={{ display: "block", color: "var(--mh-muted)", fontSize: 12, marginBottom: 6 }}>Message</label>
                 <textarea
@@ -624,16 +775,49 @@ export function Messages() {
                   {selectedRecipient}
                 </p>
                 <p style={{ color: "var(--mh-muted)", fontSize: 12, marginTop: 1 }}>
-                  {messages.length} message{messages.length !== 1 ? "s" : ""}
+                  {timeline.length} message{timeline.length !== 1 ? "s" : ""}
+                  {historyEnabled && historyStatus === "COMPLETED" && " · device history merged"}
                 </p>
               </div>
-              <button
-                style={refreshBtnStyle}
-                onClick={() => selectedKey && void loadMessages({ key: selectedKey, recipient: selectedRecipient, status: filter, pageNum: 0 })}
-                title="Refresh messages"
-              >
-                <RefreshCw size={13} style={{ animation: messagesLoading ? "spin 1s linear infinite" : undefined }} />
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {historyEnabled && activeDevices.length > 1 && (
+                  <select
+                    value={historyDeviceId}
+                    onChange={(e) => setHistoryDeviceId(e.target.value)}
+                    title="Device to pull history from"
+                    style={{ background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "var(--mh-text)", fontFamily: "var(--mh-font-body)", outline: "none", maxWidth: 160 }}
+                  >
+                    {activeDevices.map((d) => (
+                      <option key={d.id} value={d.id}>{d.deviceName}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={handleToggleHistory}
+                  disabled={activeDevices.length === 0}
+                  title={activeDevices.length === 0 ? "No active devices to pull history from" : historyEnabled ? "Hide device history" : "Merge device history into this thread"}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: historyEnabled ? "var(--mh-accent)" : "transparent",
+                    color: historyEnabled ? "var(--mh-accent-fg)" : "var(--mh-muted)",
+                    border: `1px solid ${historyEnabled ? "var(--mh-accent)" : "var(--mh-border)"}`,
+                    borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 500,
+                    cursor: activeDevices.length === 0 ? "not-allowed" : "pointer",
+                    opacity: activeDevices.length === 0 ? 0.5 : 1,
+                    fontFamily: "var(--mh-font-body)",
+                  }}
+                >
+                  <History size={13} />
+                  Device history
+                </button>
+                <button
+                  style={refreshBtnStyle}
+                  onClick={() => selectedKey && void loadMessages({ key: selectedKey, recipient: selectedRecipient, status: filter, pageNum: 0 })}
+                  title="Refresh messages"
+                >
+                  <RefreshCw size={13} style={{ animation: messagesLoading ? "spin 1s linear infinite" : undefined }} />
+                </button>
+              </div>
             </div>
 
             {/* Filter tabs */}
@@ -664,52 +848,129 @@ export function Messages() {
               {loadingMore && (
                 <p style={{ color: "var(--mh-muted)", fontSize: 12, textAlign: "center" }}>Loading older…</p>
               )}
-              {messagesLoading && messages.length === 0 && (
+
+              {/* Device history status banner (merged results appear inline below) */}
+              {historyEnabled && historyStatus === "PENDING" && (
+                <div style={historyBannerStyle}>
+                  <RefreshCw size={12} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Fetching messages from device…</span>
+                </div>
+              )}
+              {historyEnabled && historyStatus === "FAILED" && (
+                <div style={{ ...historyBannerStyle, borderColor: "var(--mh-red)", color: "var(--mh-red)" }}>
+                  <span style={{ flex: 1 }}>
+                    The device couldn't read its messages.
+                    {historyFailureReason ? ` (${historyFailureReason})` : ""}
+                  </span>
+                  <button style={historyRetryBtnStyle} onClick={retryHistory}>
+                    <RotateCcw size={11} /> Try again
+                  </button>
+                </div>
+              )}
+              {historyEnabled && historyStatus === "TIMEOUT" && (
+                <div style={{ ...historyBannerStyle, borderColor: "var(--mh-amber)", color: "var(--mh-amber)" }}>
+                  <span style={{ flex: 1 }}>The device isn't responding. It may be offline or asleep.</span>
+                  <button style={historyRetryBtnStyle} onClick={retryHistory}>
+                    <RotateCcw size={11} /> Try again
+                  </button>
+                </div>
+              )}
+              {historyEnabled && historyStatus === "ERROR" && (
+                <div style={{ ...historyBannerStyle, borderColor: "var(--mh-red)", color: "var(--mh-red)" }}>
+                  <span style={{ flex: 1 }}>{historyError ?? "Couldn't start history request"}</span>
+                  <button style={historyRetryBtnStyle} onClick={retryHistory}>
+                    <RotateCcw size={11} /> Retry
+                  </button>
+                </div>
+              )}
+
+              {messagesLoading && timeline.length === 0 && (
                 <p style={{ color: "var(--mh-muted)", fontSize: 13, textAlign: "center", paddingTop: 32 }}>Loading…</p>
               )}
-              {!messagesLoading && messages.length === 0 && (
+              {!messagesLoading && timeline.length === 0 && historyStatus !== "PENDING" && (
                 <p style={{ color: "var(--mh-muted)", fontSize: 13, textAlign: "center", paddingTop: 32 }}>No messages</p>
               )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  style={{ background: "var(--mh-surface)", border: "1px solid var(--mh-border)", borderRadius: 10, padding: "14px 18px", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}
-                >
-                  <p style={{ color: "var(--mh-text)", fontSize: 14, lineHeight: 1.5, marginBottom: 10 }}>
-                    {msg.message}
-                  </p>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <Badge status={(msg.status?.toLowerCase() ?? "pending") as "delivered" | "pending" | "failed"} />
-                    <span style={{ fontFamily: "var(--mh-font-mono)", fontSize: 11, color: "var(--mh-muted)", background: "var(--mh-bg)", border: "1px solid var(--mh-border)", padding: "2px 7px", borderRadius: 4 }}>
-                      from: {msg.sender}
-                    </span>
-                    {msg.status?.toLowerCase() === "failed" && (
-                      <button
-                        onClick={() => void handleRetry(msg.id)}
-                        style={{ background: "transparent", border: "1px solid var(--mh-border)", borderRadius: 4, padding: "2px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--mh-muted)", fontFamily: "var(--mh-font-body)" }}
-                        title="Retry message"
+
+              {timeline.map((item) => {
+                if (item.kind === "device") {
+                  const d = item.device;
+                  const isSent = d.direction === "SENT";
+                  return (
+                    <div
+                      key={item.id}
+                      style={{ display: "flex", flexDirection: "column", alignItems: isSent ? "flex-end" : "flex-start" }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: "72%",
+                          background: isSent ? "var(--mh-accent)" : "var(--mh-surface)",
+                          color: isSent ? "var(--mh-accent-fg)" : "var(--mh-text)",
+                          border: isSent ? "none" : "1px solid var(--mh-border)",
+                          borderRadius: 12,
+                          borderBottomRightRadius: isSent ? 4 : 12,
+                          borderBottomLeftRadius: isSent ? 12 : 4,
+                          padding: "9px 13px", fontSize: 14, lineHeight: 1.45, wordBreak: "break-word",
+                        }}
                       >
-                        <RotateCcw size={11} />
-                        Retry
-                      </button>
-                    )}
-                    <span style={{ color: "var(--mh-muted)", fontSize: 12, marginLeft: "auto" }}>
-                      {msg.created_at ? new Date(msg.created_at).toLocaleString() : ""}
-                    </span>
+                        {d.body}
+                      </div>
+                      <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--mh-muted)", fontSize: 11, marginTop: 3, padding: "0 4px" }}>
+                        <History size={10} /> on device · {new Date(d.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                }
+
+                // DB message — outbound record, right-aligned.
+                const msg = item.db;
+                const failed = msg.status?.toLowerCase() === "failed";
+                return (
+                  <div key={item.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                    <div
+                      style={{
+                        maxWidth: "72%", background: "var(--mh-accent)", color: "var(--mh-accent-fg)",
+                        borderRadius: 12, borderBottomRightRadius: 4,
+                        padding: "9px 13px", fontSize: 14, lineHeight: 1.45, wordBreak: "break-word",
+                      }}
+                    >
+                      {msg.message}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3, padding: "0 4px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <Badge status={(msg.status?.toLowerCase() ?? "pending") as "delivered" | "pending" | "failed"} />
+                      <span style={{ fontFamily: "var(--mh-font-mono)", fontSize: 10, color: "var(--mh-muted)" }}>
+                        from: {msg.sender}
+                      </span>
+                      {failed && (
+                        <button
+                          onClick={() => void handleRetry(msg.id)}
+                          style={{ background: "transparent", border: "1px solid var(--mh-border)", borderRadius: 4, padding: "1px 6px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--mh-muted)", fontFamily: "var(--mh-font-body)" }}
+                          title="Retry message"
+                        >
+                          <RotateCcw size={10} />
+                          Retry
+                        </button>
+                      )}
+                      <span style={{ color: "var(--mh-muted)", fontSize: 11 }}>
+                        {msg.created_at ? new Date(msg.created_at).toLocaleString() : ""}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Send form */}
             <div style={{ padding: "12px 24px", borderTop: "1px solid var(--mh-border)", background: "var(--mh-surface)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              <input
-                type="text"
-                placeholder="From (sender name)"
+              <select
                 value={fromInput}
                 onChange={(e) => setFromInput(e.target.value)}
-                style={{ background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "8px 12px", fontSize: 13, color: "var(--mh-text)", fontFamily: "var(--mh-font-body)", outline: "none", width: "100%", boxSizing: "border-box" }}
-              />
+                style={{ background: "var(--mh-bg)", border: "1px solid var(--mh-border)", borderRadius: 6, padding: "8px 12px", fontSize: 13, color: fromInput ? "var(--mh-text)" : "var(--mh-muted)", fontFamily: "var(--mh-font-body)", outline: "none", width: "100%", boxSizing: "border-box" }}
+              >
+                <option value="">Select device (sender)…</option>
+                {devices.filter((d) => d.isActive).map((d) => (
+                  <option key={d.id} value={d.deviceName}>{d.deviceName}</option>
+                ))}
+              </select>
               <div style={{ display: "flex", gap: 8 }}>
                 <input
                   type="text"

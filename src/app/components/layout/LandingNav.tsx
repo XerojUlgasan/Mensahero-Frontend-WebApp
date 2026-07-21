@@ -89,7 +89,7 @@ export function LandingNav() {
           </button>
 
           <a
-            href="https://drive.google.com/file/d/1rSYuMfHuKMyssJoNocvIjk5bZFZaKIsG/view?usp=sharing"
+            href="https://drive.google.com/drive/folders/1MYaMw5eVJKni4EDfqWwLChFwdSRy50t2"
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -176,7 +176,7 @@ export function LandingNav() {
             </Link>
           ))}
           <a
-            href="https://drive.google.com/file/d/1rSYuMfHuKMyssJoNocvIjk5bZFZaKIsG/view?usp=sharing"
+            href="https://drive.google.com/drive/folders/1MYaMw5eVJKni4EDfqWwLChFwdSRy50t2"
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => setMobileOpen(false)}
