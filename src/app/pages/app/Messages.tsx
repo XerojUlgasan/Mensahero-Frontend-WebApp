@@ -86,8 +86,10 @@ export function Messages() {
   const {
     status: historyStatus,
     messages: historyMessages,
-    failureReason: historyFailureReason,
     error: historyError,
+    hasMore: historyHasMore,
+    loadingMore: historyLoadingMore,
+    loadMore: loadMoreHistory,
     retry: retryHistory,
   } = useSmsHistory(
     historyEnabled ? selectedKey?.id : undefined,
@@ -315,8 +317,10 @@ export function Messages() {
   // ── Scroll up to load older messages ─────────────────────────────────────
   const handleMsgScroll = () => {
     const el = msgScrollRef.current;
-    if (!el || loadingMore || !hasMore || !selectedKey || !selectedRecipient) return;
-    if (el.scrollTop < 60) {
+    if (!el || !selectedKey || !selectedRecipient) return;
+
+    // Older messages from the database (DB thread pagination) — load near top.
+    if (el.scrollTop < 60 && !loadingMore && hasMore) {
       const nextPage = page + 1;
       setPage(nextPage);
       void loadMessages({
@@ -326,6 +330,43 @@ export function Messages() {
         pageNum: nextPage,
         prepend: true,
       });
+    }
+
+    // On-device history: infinite scroll toward the top. Log scroll depth at
+    // 50% and 100% (once per cycle) and fetch the next older page at 100%.
+    if (!historyEnabled || !historyHasMore) return;
+
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    // Progress toward the load point (the top): 0 at bottom, 1 at the very top.
+    const progress = maxScroll <= 0 ? 1 : 1 - el.scrollTop / maxScroll;
+
+    // Reset the per-cycle log guards once the user scrolls back down, so the
+    // next scroll-up logs 50%/100% again and can fetch the following page.
+    if (progress < 0.5) {
+      histLogged50Ref.current = false;
+      histLogged100Ref.current = false;
+      return;
+    }
+
+    if (!histLogged50Ref.current) {
+      histLogged50Ref.current = true;
+      console.log(
+        `[SMS history] scrolled 50% toward next page — ${selectedRecipient}`,
+      );
+    }
+
+    if (progress >= 0.995 && !histLogged100Ref.current) {
+      histLogged100Ref.current = true;
+      console.log(
+        `[SMS history] scrolled 100% — fetching next page — ${selectedRecipient}`,
+      );
+      if (!historyLoadingMore) {
+        // Preserve scroll position: older messages sort to the top, growing the
+        // list upward. Capture the height now; the offset is restored once the
+        // new page is stitched into the timeline (see effect below).
+        histPrevHeightRef.current = el.scrollHeight;
+        loadMoreHistory();
+      }
     }
   };
 
@@ -451,6 +492,25 @@ export function Messages() {
     () => recipients.filter((r) => !search || r.receiver.toLowerCase().includes(search.toLowerCase())),
     [recipients, search],
   );
+
+  // Preserve scroll offset when older device-history pages are prepended.
+  const histPrevHeightRef = useRef<number | null>(null);
+  useEffect(() => {
+    const el = msgScrollRef.current;
+    if (!el || histPrevHeightRef.current === null) return;
+    const delta = el.scrollHeight - histPrevHeightRef.current;
+    histPrevHeightRef.current = null;
+    if (delta > 0) el.scrollTop += delta;
+  }, [historyMessages]);
+
+  // Per-cycle guards so each 50%/100% scroll-depth log fires once until a page
+  // is fetched. Reset when the thread or history toggle changes.
+  const histLogged50Ref = useRef(false);
+  const histLogged100Ref = useRef(false);
+  useEffect(() => {
+    histLogged50Ref.current = false;
+    histLogged100Ref.current = false;
+  }, [selectedRecipient, historyEnabled]);
 
   // Merge DB messages with on-device history into a single date-ordered thread.
   const timeline = useMemo(() => {
@@ -850,7 +910,7 @@ export function Messages() {
               )}
 
               {/* Device history status banner (merged results appear inline below) */}
-              {historyEnabled && historyStatus === "PENDING" && (
+              {historyEnabled && historyStatus === "LOADING" && (
                 <div style={historyBannerStyle}>
                   <RefreshCw size={12} style={{ animation: "spin 1s linear infinite" }} />
                   <span>Fetching messages from device…</span>
@@ -859,35 +919,41 @@ export function Messages() {
               {historyEnabled && historyStatus === "FAILED" && (
                 <div style={{ ...historyBannerStyle, borderColor: "var(--mh-red)", color: "var(--mh-red)" }}>
                   <span style={{ flex: 1 }}>
-                    The device couldn't read its messages.
-                    {historyFailureReason ? ` (${historyFailureReason})` : ""}
+                    {historyError ?? "Couldn't load history. Please try again."}
                   </span>
                   <button style={historyRetryBtnStyle} onClick={retryHistory}>
                     <RotateCcw size={11} /> Try again
                   </button>
                 </div>
               )}
-              {historyEnabled && historyStatus === "TIMEOUT" && (
-                <div style={{ ...historyBannerStyle, borderColor: "var(--mh-amber)", color: "var(--mh-amber)" }}>
-                  <span style={{ flex: 1 }}>The device isn't responding. It may be offline or asleep.</span>
-                  <button style={historyRetryBtnStyle} onClick={retryHistory}>
-                    <RotateCcw size={11} /> Try again
-                  </button>
-                </div>
-              )}
-              {historyEnabled && historyStatus === "ERROR" && (
-                <div style={{ ...historyBannerStyle, borderColor: "var(--mh-red)", color: "var(--mh-red)" }}>
-                  <span style={{ flex: 1 }}>{historyError ?? "Couldn't start history request"}</span>
-                  <button style={historyRetryBtnStyle} onClick={retryHistory}>
-                    <RotateCcw size={11} /> Retry
-                  </button>
-                </div>
+
+              {/* Older device history: infinite scroll (scroll to top) + an
+                  explicit control so it's always discoverable and testable. */}
+              {historyEnabled && (historyHasMore || historyLoadingMore) && (
+                <button
+                  onClick={() => loadMoreHistory()}
+                  disabled={historyLoadingMore}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    alignSelf: "center", margin: "0 auto",
+                    background: "transparent", border: "1px solid var(--mh-border)", borderRadius: 6,
+                    padding: "5px 12px", fontSize: 12, color: "var(--mh-muted)",
+                    cursor: historyLoadingMore ? "default" : "pointer",
+                    fontFamily: "var(--mh-font-body)",
+                  }}
+                >
+                  <RefreshCw
+                    size={11}
+                    style={{ animation: historyLoadingMore ? "spin 1s linear infinite" : undefined }}
+                  />
+                  <span>{historyLoadingMore ? "Loading older messages…" : "Load older messages"}</span>
+                </button>
               )}
 
               {messagesLoading && timeline.length === 0 && (
                 <p style={{ color: "var(--mh-muted)", fontSize: 13, textAlign: "center", paddingTop: 32 }}>Loading…</p>
               )}
-              {!messagesLoading && timeline.length === 0 && historyStatus !== "PENDING" && (
+              {!messagesLoading && timeline.length === 0 && historyStatus !== "LOADING" && (
                 <p style={{ color: "var(--mh-muted)", fontSize: 13, textAlign: "center", paddingTop: 32 }}>No messages</p>
               )}
 

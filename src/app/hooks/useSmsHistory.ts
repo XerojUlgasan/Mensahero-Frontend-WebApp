@@ -1,69 +1,54 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getApiBaseUrl } from "../lib/api";
+import { supabase } from "../lib/supabase";
+import { requestPage, type PageState } from "../lib/historyController";
+import { reasonToCopy } from "../lib/historyReasons";
+import type { HistoryMessage, MessageDirection } from "../lib/historyStream";
 
-export type SmsDirection = "SENT" | "RECEIVED";
-
-export interface SmsHistoryMessage {
-  body: string;
-  direction: SmsDirection;
-  /** epoch milliseconds */
-  timestamp: number;
-}
+export type SmsDirection = MessageDirection;
+export type SmsHistoryMessage = HistoryMessage;
 
 /**
- * UI-facing status. Mirrors the server terminal states and adds:
+ * UI-facing status for the SSE history flow (tracks the FIRST page load):
  * - IDLE: no active request (missing inputs / panel closed)
- * - ERROR: network failure or non-2xx on the POST or a poll request
+ * - LOADING: first page in flight, waiting on the SSE event
+ * - COMPLETED: at least one page received (possibly empty)
+ * - FAILED: first page failed (gateway error, timeout, or terminal HTTP error)
  */
-export type SmsHistoryStatus =
-  | "IDLE"
-  | "PENDING"
-  | "COMPLETED"
-  | "FAILED"
-  | "TIMEOUT"
-  | "ERROR";
-
-type ServerStatus = "PENDING" | "COMPLETED" | "FAILED" | "TIMEOUT";
-
-interface JobResponse {
-  jobId: string;
-  status: ServerStatus;
-  messages: SmsHistoryMessage[] | null;
-  failureReason: string | null;
-}
+export type SmsHistoryStatus = "IDLE" | "LOADING" | "COMPLETED" | "FAILED";
 
 export interface UseSmsHistoryResult {
   status: SmsHistoryStatus;
+  /** Accumulated messages across all loaded pages, reassembled by pageNumber. */
   messages: SmsHistoryMessage[];
+  /** Raw reason code of the most recent failure (for logic/telemetry). */
   failureReason: string | null;
-  /** Human-readable error string for the ERROR state. */
+  /** Human-readable copy for a failure, mapped via the Reason_Mapper. */
   error: string | null;
-  /** Restart the whole flow (new POST -> new poll). */
+  /** True when the last loaded page was full, i.e. an older page may exist. */
+  hasMore: boolean;
+  /** True while a subsequent (page > 0) request is in flight. */
+  loadingMore: boolean;
+  /** Fetch the next older page. No-op if already loading or no more pages. */
+  loadMore: () => void;
+  /** Restart the flow from page 0 for the current inputs. */
   retry: () => void;
 }
 
-const POLL_INTERVAL_MS = 2000;
-/** Client-side safety net. Server caps device wait at 30s; give it a little slack. */
-const POLL_CEILING_MS = 35000;
-const GENERIC_ERROR = "Couldn't start history request";
-
-const TERMINAL: ReadonlySet<ServerStatus> = new Set<ServerStatus>([
-  "COMPLETED",
-  "FAILED",
-  "TIMEOUT",
-]);
+const PAGE_SIZE = 25;
 
 /**
- * Owns the on-demand SMS history flow for a single (apiId, deviceId, address):
- * POST to create a job, then poll until a terminal state.
+ * Owns the on-demand, paged SMS history flow for a single (apiId, deviceId,
+ * address) over the SSE model. Loads page 0 immediately, then fetches older
+ * pages one at a time via loadMore() to support infinite scroll. Thin adapter
+ * over the framework-agnostic controller; it does NOT open/close the stream
+ * (the dashboard shell owns that lifecycle).
  *
- * Race protection: every run gets a monotonically increasing runId. Any async
- * continuation checks it is still the current run before touching state or
- * scheduling more work, so switching threads mid-flight can never surface a
- * stale thread's messages or leave an orphaned poll loop alive.
+ * Race protection: each fresh input set gets a monotonically increasing runId;
+ * stale async continuations are dropped so switching threads mid-flight never
+ * surfaces a previous thread's messages.
  *
- * Pass `undefined` for any input to stay IDLE (and cancel any in-flight work).
+ * Pass `undefined` for any input to stay IDLE.
  */
 export function useSmsHistory(
   apiId: string | undefined | null,
@@ -76,195 +61,131 @@ export function useSmsHistory(
   const [messages, setMessages] = useState<SmsHistoryMessage[]>([]);
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  // Bumped on every start; identifies the "current" run.
   const runIdRef = useRef(0);
-  const abortRef = useRef<AbortController | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ceilingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Manual retry trigger.
+  // pageNumber -> messages, so we can reassemble in ascending page order.
+  const pagesRef = useRef<Map<number, SmsHistoryMessage[]>>(new Map());
+  const nextPageRef = useRef(0);
+  const loadingRef = useRef(false);
   const [retryToken, setRetryToken] = useState(0);
 
-  const clearTimers = useCallback(() => {
-    if (pollTimerRef.current !== null) {
-      clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    if (ceilingTimerRef.current !== null) {
-      clearTimeout(ceilingTimerRef.current);
-      ceilingTimerRef.current = null;
-    }
-  }, []);
-
-  /** Cancel any in-flight fetch + scheduled work and mark all runs stale. */
-  const cancel = useCallback(() => {
-    runIdRef.current += 1;
-    clearTimers();
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-  }, [clearTimers]);
-
   const token = session?.access_token;
+  const enabled = Boolean(token && apiId && deviceId && address);
+
+  const flatten = (): SmsHistoryMessage[] => {
+    const out: SmsHistoryMessage[] = [];
+    for (const n of [...pagesRef.current.keys()].sort((a, b) => a - b)) {
+      out.push(...pagesRef.current.get(n)!);
+    }
+    return out;
+  };
+
+  const loadPage = useCallback(
+    async (pageNumber: number, myRun: number) => {
+      if (loadingRef.current || runIdRef.current !== myRun || !enabled) return;
+      loadingRef.current = true;
+      const isFirst = pageNumber === 0;
+      if (isFirst) setStatus("LOADING");
+      else setLoadingMore(true);
+
+      const fetchOnce = (): Promise<PageState> =>
+        requestPage({
+          apiId: apiId!,
+          deviceId: deviceId!,
+          to: address!,
+          pageSize: PAGE_SIZE,
+          pageNumber,
+        });
+
+      const stale = () => runIdRef.current !== myRun;
+
+      try {
+        let state = await fetchOnce();
+        if (stale()) return;
+
+        // 401: refresh the token once, then retry this page once.
+        if (state.status === "error" && state.reason === "UNAUTHORIZED") {
+          const refreshed = await supabase.auth.refreshSession();
+          if (stale()) return;
+          if (refreshed.data.session) {
+            state = await fetchOnce();
+            if (stale()) return;
+          }
+        }
+
+        if (state.status === "loaded") {
+          pagesRef.current.set(state.pageNumber, state.messages);
+          nextPageRef.current = Math.max(
+            nextPageRef.current,
+            state.pageNumber + 1,
+          );
+          setMessages(flatten());
+          setHasMore(state.messages.length >= PAGE_SIZE);
+          setFailureReason(null);
+          setError(null);
+          setStatus("COMPLETED");
+        } else if (state.status === "error") {
+          setFailureReason(state.reason);
+          setError(reasonToCopy(state.reason));
+          // First-page failure is fatal for the view; a later-page failure just
+          // stops paging (earlier pages remain visible).
+          if (isFirst) setStatus("FAILED");
+          setHasMore(false);
+        }
+      } finally {
+        loadingRef.current = false;
+        if (!isFirst) setLoadingMore(false);
+      }
+    },
+    [enabled, apiId, deviceId, address],
+  );
 
   const start = useCallback(() => {
-    // Nothing to do without complete inputs / auth -> reset to IDLE.
-    if (!token || !apiId || !deviceId || !address) {
-      cancel();
-      setStatus("IDLE");
-      setMessages([]);
-      setFailureReason(null);
-      setError(null);
-      return;
-    }
-
-    // Supersede any previous run.
-    cancel();
+    // Supersede any previous run and reset accumulated state.
+    runIdRef.current += 1;
     const myRun = runIdRef.current;
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const isCurrent = () => runIdRef.current === myRun;
-
-    setStatus("PENDING");
+    pagesRef.current = new Map();
+    nextPageRef.current = 0;
+    loadingRef.current = false;
     setMessages([]);
     setFailureReason(null);
     setError(null);
+    setLoadingMore(false);
+    setHasMore(false);
 
-    const baseUrl = getApiBaseUrl();
-    const authHeader = { Authorization: `Bearer ${token}` };
+    if (!enabled) {
+      setStatus("IDLE");
+      return;
+    }
+    setStatus("LOADING");
+    void loadPage(0, myRun);
+  }, [enabled, loadPage]);
 
-    const finishError = (message: string) => {
-      if (!isCurrent()) return;
-      clearTimers();
-      setError(message);
-      setStatus("ERROR");
-    };
-
-    const poll = async (jobId: string) => {
-      if (!isCurrent()) return;
-      let res: Response;
-      try {
-        res = await fetch(
-          `${baseUrl}/api/messages/history/${encodeURIComponent(jobId)}`,
-          { headers: { ...authHeader, Accept: "application/json" }, signal: controller.signal },
-        );
-      } catch (e) {
-        if ((e as Error)?.name === "AbortError" || !isCurrent()) return;
-        finishError("Lost connection while fetching messages.");
-        return;
-      }
-
-      if (!isCurrent()) return;
-
-      // 404 => job missing or not owned by this user. Non-2xx => generic error.
-      if (!res.ok) {
-        finishError(GENERIC_ERROR);
-        return;
-      }
-
-      let data: JobResponse;
-      try {
-        data = (await res.json()) as JobResponse;
-      } catch {
-        finishError(GENERIC_ERROR);
-        return;
-      }
-
-      if (!isCurrent()) return;
-
-      if (TERMINAL.has(data.status)) {
-        clearTimers();
-        if (data.status === "COMPLETED") {
-          setMessages(data.messages ?? []);
-          setFailureReason(null);
-          setStatus("COMPLETED");
-        } else if (data.status === "FAILED") {
-          setFailureReason(data.failureReason ?? null);
-          setStatus("FAILED");
-        } else {
-          // TIMEOUT
-          setFailureReason(null);
-          setStatus("TIMEOUT");
-        }
-        return;
-      }
-
-      // Still PENDING -> schedule the next poll.
-      pollTimerRef.current = setTimeout(() => {
-        void poll(jobId);
-      }, POLL_INTERVAL_MS);
-    };
-
-    const createJob = async () => {
-      let res: Response;
-      try {
-        res = await fetch(`${baseUrl}/api/messages/history`, {
-          method: "POST",
-          headers: {
-            ...authHeader,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ apiId, deviceId, address }),
-          signal: controller.signal,
-        });
-      } catch (e) {
-        if ((e as Error)?.name === "AbortError" || !isCurrent()) return;
-        finishError(GENERIC_ERROR);
-        return;
-      }
-
-      if (!isCurrent()) return;
-
-      if (!res.ok) {
-        // 404 (unowned apiId / missing device) or 403 (device not on apiId)
-        // both surface the same generic message per the contract.
-        finishError(GENERIC_ERROR);
-        return;
-      }
-
-      let data: JobResponse;
-      try {
-        data = (await res.json()) as JobResponse;
-      } catch {
-        finishError(GENERIC_ERROR);
-        return;
-      }
-
-      if (!isCurrent() || !data.jobId) {
-        if (isCurrent()) finishError(GENERIC_ERROR);
-        return;
-      }
-
-      // Arm the client-side ceiling as a safety net against endless PENDING.
-      ceilingTimerRef.current = setTimeout(() => {
-        if (!isCurrent()) return;
-        clearTimers();
-        setFailureReason(null);
-        setStatus("TIMEOUT");
-        controller.abort();
-      }, POLL_CEILING_MS);
-
-      void poll(data.jobId);
-    };
-
-    void createJob();
-  }, [token, apiId, deviceId, address, cancel, clearTimers]);
-
-  // Run whenever inputs change or a retry is requested.
   useEffect(() => {
     start();
     return () => {
-      cancel();
+      // Invalidate the in-flight run so its resolution is ignored.
+      runIdRef.current += 1;
     };
-  }, [start, retryToken, cancel]);
+  }, [start, retryToken]);
 
-  const retry = useCallback(() => {
-    setRetryToken((t) => t + 1);
-  }, []);
+  const loadMore = useCallback(() => {
+    if (!enabled || loadingRef.current || !hasMore) return;
+    void loadPage(nextPageRef.current, runIdRef.current);
+  }, [enabled, hasMore, loadPage]);
 
-  return { status, messages, failureReason, error, retry };
+  const retry = useCallback(() => setRetryToken((t) => t + 1), []);
+
+  return {
+    status,
+    messages,
+    failureReason,
+    error,
+    hasMore,
+    loadingMore,
+    loadMore,
+    retry,
+  };
 }
