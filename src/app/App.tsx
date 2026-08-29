@@ -5,6 +5,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider } from "./context/AuthContext";
 
 export default function App() {
+  console.log("TESTSETESTS")
   return (
     <ThemeProvider>
       <AuthProvider>
